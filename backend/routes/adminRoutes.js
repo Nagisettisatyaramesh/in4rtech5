@@ -1,5 +1,6 @@
 const express = require('express');
 const { login, listContacts, getContact, deleteContact, logout } = require('../controllers/adminController');
+const { listAll, createPost, updatePost, deletePost } = require('../controllers/blogController');
 const { requireAdmin } = require('../middleware/authMiddleware');
 const router = express.Router();
 router.post('/login', login);
@@ -7,4 +8,8 @@ router.post('/logout', requireAdmin, logout);
 router.get('/contacts', requireAdmin, listContacts);
 router.get('/contacts/:id', requireAdmin, getContact);
 router.delete('/contacts/:id', requireAdmin, deleteContact);
+router.get('/blogs', requireAdmin, listAll);
+router.post('/blogs', requireAdmin, createPost);
+router.put('/blogs/:id', requireAdmin, updatePost);
+router.delete('/blogs/:id', requireAdmin, deletePost);
 module.exports = router;

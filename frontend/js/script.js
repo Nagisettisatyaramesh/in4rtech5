@@ -251,90 +251,12 @@
     if (event.target === searchDialog) searchDialog.close();
   });
   document.addEventListener('keydown', (event) => {
-    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k' && !document.querySelector('.search-toggle').hidden) {
       event.preventDefault(); document.querySelector('.search-toggle').click();
     }
   });
 
   document.getElementById('year').textContent = new Date().getFullYear();
-
-  const assistantToggle = document.getElementById('assistant-toggle');
-  const assistantPanel = document.getElementById('assistant-panel');
-  const assistantClose = document.getElementById('assistant-close');
-  const assistantForm = document.getElementById('assistant-form');
-  const assistantInput = document.getElementById('assistant-input');
-  const assistantMessages = document.getElementById('assistant-messages');
-  const assistantStatus = document.getElementById('assistant-status');
-  const assistantHistory = [];
-  let assistantBusy = false;
-
-  const setAssistantOpen = (open) => {
-    assistantPanel.hidden = !open;
-    assistantToggle.setAttribute('aria-expanded', String(open));
-    if (open) assistantInput.focus();
-    else assistantToggle.focus();
-  };
-  const addAssistantMessage = (role, content) => {
-    const message = document.createElement('p');
-    message.className = `assistant-message ${role === 'assistant' ? 'assistant-message-bot' : 'assistant-message-user'}`;
-    message.textContent = content;
-    assistantMessages.append(message);
-    assistantMessages.scrollTop = assistantMessages.scrollHeight;
-    return message;
-  };
-  const sendAssistantMessage = async (value) => {
-    const content = value.trim();
-    if (!content || assistantBusy) return;
-    assistantBusy = true;
-    assistantInput.value = '';
-    assistantInput.disabled = true;
-    assistantForm.querySelector('button[type="submit"]').disabled = true;
-    assistantStatus.textContent = 'Thinking…';
-    assistantHistory.push({ role: 'user', content });
-    addAssistantMessage('user', content);
-    const pending = addAssistantMessage('assistant', 'One moment…');
-    try {
-      const response = await fetch('/api/assistant', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-        body: JSON.stringify({ messages: assistantHistory.slice(-8) })
-      });
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(result.message || 'The assistant is unavailable right now.');
-      pending.textContent = result.answer;
-      assistantHistory.push({ role: 'assistant', content: result.answer });
-      assistantStatus.textContent = '';
-    } catch (error) {
-      pending.textContent = error.message || 'The assistant is unavailable right now.';
-      assistantHistory.pop();
-      assistantStatus.textContent = 'You can also contact our team below.';
-    } finally {
-      assistantBusy = false;
-      assistantInput.disabled = false;
-      assistantForm.querySelector('button[type="submit"]').disabled = false;
-      assistantMessages.scrollTop = assistantMessages.scrollHeight;
-      assistantInput.focus();
-    }
-  };
-
-  assistantToggle.addEventListener('click', () => setAssistantOpen(assistantPanel.hidden));
-  assistantClose.addEventListener('click', () => setAssistantOpen(false));
-  assistantForm.addEventListener('submit', (event) => {
-    event.preventDefault();
-    sendAssistantMessage(assistantInput.value);
-  });
-  assistantInput.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter' && !event.shiftKey) {
-      event.preventDefault();
-      assistantForm.requestSubmit();
-    }
-  });
-  document.querySelectorAll('[data-assistant-question]').forEach((button) => {
-    button.addEventListener('click', () => sendAssistantMessage(button.dataset.assistantQuestion));
-  });
-  document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' && !assistantPanel.hidden) setAssistantOpen(false);
-  });
 
   const backTop = document.getElementById('back-top');
   const scrollProgress = document.createElement('div');
