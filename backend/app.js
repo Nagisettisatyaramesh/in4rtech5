@@ -4,10 +4,9 @@ const express = require('express');
 const session = require('express-session');
 const helmet = require('helmet');
 const cors = require('cors');
-const { checkFirestoreConnection } = require('./config/firestore');
-const { checkRealtimeDatabaseConnection } = require('./config/realtimeDatabase');
-const FirestoreSessionStore = require('./config/firestoreSessionStore');
-const sessionStore = new FirestoreSessionStore();
+const { checkSupabaseConnection } = require('./config/supabase');
+const SupabaseSessionStore = require('./config/supabaseSessionStore');
+const sessionStore = new SupabaseSessionStore();
 const contactRoutes = require('./routes/contactRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const blogRoutes = require('./routes/blogRoutes');
@@ -29,22 +28,14 @@ app.use(session({
 }));
 
 app.get('/api/health', async (req, res) => {
-  let firestore = 'unavailable';
-  let realtimeDatabase = 'unavailable';
+  let connection = 'unavailable';
   try {
-    await checkFirestoreConnection();
-    firestore = 'connected';
+    await checkSupabaseConnection();
+    connection = 'connected';
   } catch (error) {
-    console.error(`Firestore health check failed (${error.code || 'unknown'}).`);
+    console.error(`Supabase health check failed (${error.code || 'unknown'}).`);
   }
-  try {
-    await checkRealtimeDatabaseConnection();
-    realtimeDatabase = 'connected';
-  } catch (error) {
-    console.error(`Realtime Database health check failed (${error.code || 'unknown'}).`);
-  }
-  const connected = firestore === 'connected' && realtimeDatabase === 'connected';
-  res.status(connected ? 200 : 503).json({ status: connected ? 'ok' : 'degraded', firestore, realtimeDatabase, contactStorage: 'realtime-database', sessionStorage: 'firestore' });
+  res.status(connection === 'connected' ? 200 : 503).json({ status: connection === 'connected' ? 'ok' : 'degraded', database: 'supabase', connection });
 });
 app.use('/api/contact', contactRoutes);
 app.use('/api/blogs', blogRoutes);

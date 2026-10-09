@@ -1,24 +1,13 @@
 const crypto = require('crypto');
-const { getFirestoreDb } = require('../config/firestore');
+const { getSupabase, unwrap } = require('../config/supabase');
 
-// Fixed document per route and anonymized IP keeps the limiter shared across
+// One row per scope and anonymized IP keeps the limiter shared across
 // serverless instances without storing raw IP addresses.
 async function consumeRateLimit(scope, ip, limit, windowMs) {
   const key = crypto.createHash('sha256').update(`${scope}:${ip}`).digest('hex');
-  const ref = getFirestoreDb().collection('requestLimits').doc(key);
-  return getFirestoreDb().runTransaction(async (transaction) => {
-    const snapshot = await transaction.get(ref);
-    const now = Date.now();
-    const data = snapshot.exists ? snapshot.data() : {};
-    const resetAt = data.resetAt?.toMillis ? data.resetAt.toMillis() : 0;
-    if (!resetAt || resetAt <= now) {
-      transaction.set(ref, { scope, count: 1, resetAt: new Date(now + windowMs) });
-      return true;
-    }
-    if ((data.count || 0) >= limit) return false;
-    transaction.update(ref, { count: (data.count || 0) + 1 });
-    return true;
-  });
+  return unwrap(await getSupabase().rpc('consume_rate_limit', {
+    p_key: key, p_scope: scope, p_limit: limit, p_window_seconds: Math.round(windowMs / 1000)
+  })) === true;
 }
 
 function rateLimit(scope, limit, windowMs) {
