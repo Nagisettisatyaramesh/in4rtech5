@@ -1,6 +1,9 @@
 const bcrypt = require('bcryptjs');
-const { contactFromValue, getRealtimeDatabase } = require('../config/realtimeDatabase');
+const { getSupabase, unwrap } = require('../config/supabase');
 const { consumeRateLimit } = require('../middleware/rateLimit');
+
+const CONTACT_FIELDS = 'id, first_name, last_name, email, phone, company, subject, service, message, created_at';
+const isUuid = (value) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(value));
 
 async function login(req, res) {
   try {
@@ -20,7 +23,7 @@ async function login(req, res) {
     if (error) return res.status(500).json({ success: false, message: 'Could not start a secure session.' });
     req.session.isAdmin = true;
     req.session.save((saveError) => {
-      if (saveError) return res.status(500).json({ success: false, message: 'Could not save your sign-in session. Check the Firestore session configuration and try again.' });
+      if (saveError) return res.status(500).json({ success: false, message: 'Could not save your sign-in session. Check the Supabase configuration and try again.' });
       return res.json({ success: true, message: 'Signed in.' });
     });
   });
@@ -28,30 +31,26 @@ async function login(req, res) {
 
 async function listContacts(req, res, next) {
   try {
-    const snapshot = await getRealtimeDatabase().ref('contacts').once('value');
-    const contacts = [];
-    snapshot.forEach((child) => {
-      contacts.push(contactFromValue(child.key, child.val()));
-    });
-    contacts.sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
-    res.json({ success: true, contacts: contacts.slice(0, 250) });
+    const contacts = unwrap(await getSupabase().from('contacts').select(CONTACT_FIELDS)
+      .order('created_at', { ascending: false }).limit(250));
+    res.json({ success: true, contacts });
   } catch (error) { next(error); }
 }
 
 async function getContact(req, res, next) {
   try {
-    const snapshot = await getRealtimeDatabase().ref(`contacts/${req.params.id}`).once('value');
-    if (!snapshot.exists()) return res.status(404).json({ success: false, message: 'Submission not found.' });
-    res.json({ success: true, contact: contactFromValue(snapshot.key, snapshot.val()) });
+    const contact = isUuid(req.params.id) && unwrap(await getSupabase().from('contacts').select(CONTACT_FIELDS)
+      .eq('id', req.params.id).maybeSingle());
+    if (!contact) return res.status(404).json({ success: false, message: 'Submission not found.' });
+    res.json({ success: true, contact });
   } catch (error) { next(error); }
 }
 
 async function deleteContact(req, res, next) {
   try {
-    const document = getRealtimeDatabase().ref(`contacts/${req.params.id}`);
-    const snapshot = await document.once('value');
-    if (!snapshot.exists()) return res.status(404).json({ success: false, message: 'Submission not found.' });
-    await document.remove();
+    const deleted = isUuid(req.params.id) ? unwrap(await getSupabase().from('contacts').delete()
+      .eq('id', req.params.id).select('id')) : [];
+    if (!deleted.length) return res.status(404).json({ success: false, message: 'Submission not found.' });
     res.json({ success: true, message: 'Submission deleted.' });
   } catch (error) { next(error); }
 }

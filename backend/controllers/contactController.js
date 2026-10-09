@@ -1,4 +1,4 @@
-const { contactRecord, getRealtimeDatabase } = require('../config/realtimeDatabase');
+const { getSupabase, unwrap } = require('../config/supabase');
 const { isEmailConfigured, sendContactEmail } = require('../config/email');
 
 const clean = (value, max) => String(value || '').trim().replace(/[<>]/g, '').slice(0, max);
@@ -20,15 +20,19 @@ async function createContact(req, res, next) {
   }
 
   try {
-    const record = contactRecord({
-      firstName, lastName, email, phone, company, subject: subject || service || 'Website enquiry', service, message
-    });
-    const created = await getRealtimeDatabase().ref('contacts').push(record);
+    const record = {
+      firstName, lastName, email, phone: phone || null, company: company || null,
+      subject: subject || service || 'Website enquiry', service: service || null, message
+    };
+    const created = unwrap(await getSupabase().from('contacts').insert({
+      first_name: record.firstName, last_name: record.lastName || null, email: record.email, phone: record.phone,
+      company: record.company, subject: record.subject, service: record.service, message: record.message
+    }).select('id').single());
     // The enquiry is already saved, so an email failure is logged rather than shown to the visitor.
     if (isEmailConfigured()) {
       await sendContactEmail(record).catch((error) => console.error(`Enquiry email failed (${error.code || error.name || 'unknown'}).`));
     }
-    return res.status(201).json({ success: true, id: created.key, message: 'Thanks for reaching out. Your enquiry is with our team. We’ll reply to the email address you entered.' });
+    return res.status(201).json({ success: true, id: created.id, message: 'Thanks for reaching out. Your enquiry is with our team. We’ll reply to the email address you entered.' });
   } catch (error) { return next(error); }
 }
 

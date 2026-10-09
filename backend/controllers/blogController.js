@@ -1,10 +1,12 @@
-const { getRealtimeDatabase } = require('../config/realtimeDatabase');
+const { getSupabase, unwrap } = require('../config/supabase');
 
 const LIMITS = { title: 160, summary: 400, author: 80, content: 100000 };
 const STATUSES = ['draft', 'published'];
+const LIST_FIELDS = 'id, slug, title, summary, author, status, content, created_at, updated_at, published_at';
 
 const line = (value, max) => String(value || '').replace(/[\r\n]+/g, ' ').trim().slice(0, max);
 const text = (value, max) => String(value || '').replace(/\r\n?/g, '\n').trim().slice(0, max);
+const isUuid = (value) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(value));
 
 function slugify(title) {
   const slug = title.toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '')
@@ -17,31 +19,22 @@ function readingMinutes(content) {
   return Math.max(1, Math.round(words / 220));
 }
 
-function blogFromValue(id, value, { includeContent = true } = {}) {
+function blogFromRow(row, { includeContent = true } = {}) {
   const post = {
-    id,
-    slug: value.slug || id,
-    title: value.title || '',
-    summary: value.summary || '',
-    author: value.author || '',
-    status: STATUSES.includes(value.status) ? value.status : 'draft',
-    readingMinutes: readingMinutes(value.content || ''),
-    createdAt: value.createdAt || null,
-    updatedAt: value.updatedAt || null,
-    publishedAt: value.publishedAt || null
+    id: row.id,
+    slug: row.slug,
+    title: row.title || '',
+    summary: row.summary || '',
+    author: row.author || '',
+    status: STATUSES.includes(row.status) ? row.status : 'draft',
+    readingMinutes: readingMinutes(row.content || ''),
+    createdAt: row.created_at || null,
+    updatedAt: row.updated_at || null,
+    publishedAt: row.published_at || null
   };
-  if (includeContent) post.content = value.content || '';
+  if (includeContent) post.content = row.content || '';
   return post;
 }
-
-async function loadPosts() {
-  const snapshot = await getRealtimeDatabase().ref('blogs').once('value');
-  const posts = [];
-  snapshot.forEach((child) => { posts.push({ id: child.key, value: child.val() || {} }); });
-  return posts;
-}
-
-const newestFirst = (a, b) => String(b.publishedAt || b.updatedAt || '').localeCompare(String(a.publishedAt || a.updatedAt || ''));
 
 function validate(body) {
   const post = {
@@ -56,9 +49,10 @@ function validate(body) {
   return { post };
 }
 
-function uniqueSlug(title, posts, ownId) {
+async function uniqueSlug(title, ownId) {
   const base = slugify(title);
-  const taken = new Set(posts.filter((p) => p.id !== ownId).map((p) => p.value.slug));
+  const rows = unwrap(await getSupabase().from('blog_posts').select('id, slug').like('slug', `${base}%`));
+  const taken = new Set(rows.filter((row) => row.id !== ownId).map((row) => row.slug));
   let slug = base;
   for (let n = 2; taken.has(slug); n += 1) slug = `${base}-${n}`;
   return slug;
@@ -67,30 +61,28 @@ function uniqueSlug(title, posts, ownId) {
 // Public: published articles only.
 async function listPublished(req, res, next) {
   try {
-    const posts = (await loadPosts())
-      .filter((p) => p.value.status === 'published')
-      .map((p) => blogFromValue(p.id, p.value, { includeContent: false }))
-      .sort(newestFirst);
+    const rows = unwrap(await getSupabase().from('blog_posts').select(LIST_FIELDS)
+      .eq('status', 'published').order('published_at', { ascending: false }));
     res.set('Cache-Control', 'public, max-age=60');
-    res.json({ success: true, posts });
+    res.json({ success: true, posts: rows.map((row) => blogFromRow(row, { includeContent: false })) });
   } catch (error) { next(error); }
 }
 
 async function getPublished(req, res, next) {
   try {
-    const slug = line(req.params.slug, 100);
-    const match = (await loadPosts()).find((p) => p.value.slug === slug && p.value.status === 'published');
-    if (!match) return res.status(404).json({ success: false, message: 'Article not found.' });
+    const row = unwrap(await getSupabase().from('blog_posts').select(LIST_FIELDS)
+      .eq('slug', line(req.params.slug, 100)).eq('status', 'published').maybeSingle());
+    if (!row) return res.status(404).json({ success: false, message: 'Article not found.' });
     res.set('Cache-Control', 'public, max-age=60');
-    res.json({ success: true, post: blogFromValue(match.id, match.value) });
+    res.json({ success: true, post: blogFromRow(row) });
   } catch (error) { next(error); }
 }
 
 // Admin: all articles, including drafts.
 async function listAll(req, res, next) {
   try {
-    const posts = (await loadPosts()).map((p) => blogFromValue(p.id, p.value)).sort(newestFirst);
-    res.json({ success: true, posts });
+    const rows = unwrap(await getSupabase().from('blog_posts').select(LIST_FIELDS).order('updated_at', { ascending: false }));
+    res.json({ success: true, posts: rows.map((row) => blogFromRow(row)) });
   } catch (error) { next(error); }
 }
 
@@ -99,16 +91,14 @@ async function createPost(req, res, next) {
   if (error) return res.status(400).json({ success: false, message: error });
   try {
     const now = new Date().toISOString();
-    const record = {
+    const row = unwrap(await getSupabase().from('blog_posts').insert({
       ...post,
-      slug: uniqueSlug(post.title, await loadPosts()),
-      createdAt: now,
-      updatedAt: now,
-      publishedAt: post.status === 'published' ? now : null
-    };
-    const created = getRealtimeDatabase().ref('blogs').push();
-    await created.set(record);
-    res.status(201).json({ success: true, post: blogFromValue(created.key, record), message: post.status === 'published' ? 'Article published.' : 'Draft saved.' });
+      slug: await uniqueSlug(post.title),
+      created_at: now,
+      updated_at: now,
+      published_at: post.status === 'published' ? now : null
+    }).select(LIST_FIELDS).single());
+    res.status(201).json({ success: true, post: blogFromRow(row), message: post.status === 'published' ? 'Article published.' : 'Draft saved.' });
   } catch (err) { next(err); }
 }
 
@@ -116,30 +106,27 @@ async function updatePost(req, res, next) {
   const { post, error } = validate(req.body || {});
   if (error) return res.status(400).json({ success: false, message: error });
   try {
-    const posts = await loadPosts();
-    const existing = posts.find((p) => p.id === req.params.id);
+    const existing = isUuid(req.params.id) && unwrap(await getSupabase().from('blog_posts')
+      .select('id, slug, published_at').eq('id', req.params.id).maybeSingle());
     if (!existing) return res.status(404).json({ success: false, message: 'Article not found.' });
     const now = new Date().toISOString();
     // Keep the URL stable once an article has been published, so shared links keep working.
-    const slug = existing.value.publishedAt ? existing.value.slug : uniqueSlug(post.title, posts, existing.id);
-    const record = {
-      ...existing.value,
+    const slug = existing.published_at ? existing.slug : await uniqueSlug(post.title, existing.id);
+    const row = unwrap(await getSupabase().from('blog_posts').update({
       ...post,
       slug,
-      updatedAt: now,
-      publishedAt: post.status === 'published' ? (existing.value.publishedAt || now) : (existing.value.publishedAt || null)
-    };
-    await getRealtimeDatabase().ref(`blogs/${existing.id}`).set(record);
-    res.json({ success: true, post: blogFromValue(existing.id, record), message: post.status === 'published' ? 'Article published.' : 'Draft saved.' });
+      updated_at: now,
+      published_at: existing.published_at || (post.status === 'published' ? now : null)
+    }).eq('id', existing.id).select(LIST_FIELDS).single());
+    res.json({ success: true, post: blogFromRow(row), message: post.status === 'published' ? 'Article published.' : 'Draft saved.' });
   } catch (err) { next(err); }
 }
 
 async function deletePost(req, res, next) {
   try {
-    const ref = getRealtimeDatabase().ref(`blogs/${req.params.id}`);
-    const snapshot = await ref.once('value');
-    if (!snapshot.exists()) return res.status(404).json({ success: false, message: 'Article not found.' });
-    await ref.remove();
+    const deleted = isUuid(req.params.id) ? unwrap(await getSupabase().from('blog_posts').delete()
+      .eq('id', req.params.id).select('id')) : [];
+    if (!deleted.length) return res.status(404).json({ success: false, message: 'Article not found.' });
     res.json({ success: true, message: 'Article deleted.' });
   } catch (error) { next(error); }
 }
