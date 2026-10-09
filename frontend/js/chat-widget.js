@@ -12,6 +12,10 @@
   const sessionKey = `in4rtech_chat_session_${websiteId}`;
   let sessionToken = null;
   try { sessionToken = localStorage.getItem(sessionKey); } catch (_) { /* Storage may be disabled. */ }
+  const visitorKey = `in4rtech_chat_visitor_${websiteId}`;
+  let visitor = null;
+  try { visitor = JSON.parse(localStorage.getItem(visitorKey) || 'null'); } catch (_) { visitor = null; }
+  if (!visitor || !visitor.name || !visitor.email) visitor = null;
   let config = { businessName: 'In4rtech', humanPhone: '' };
   let sending = false;
 
@@ -49,6 +53,14 @@
     .typing span { width: 7px; height: 7px; border-radius: 50%; background: #9ca3af; animation: blink 1.2s infinite ease-in-out; }
     .typing span:nth-child(2) { animation-delay: .15s; } .typing span:nth-child(3) { animation-delay: .3s; }
     @keyframes blink { 0%, 80%, 100% { opacity: .3; } 40% { opacity: 1; } }
+    .details { align-self: stretch; display: grid; gap: 8px; padding: 12px; background: #fff; border-radius: 12px; box-shadow: 0 2px 8px rgba(15, 23, 42, .06); }
+    .details label { display: grid; gap: 4px; font-size: 12px; font-weight: 600; color: #374151; }
+    .details input { height: 38px; padding: 0 12px; border: 1px solid #d1d5db; border-radius: 8px; font: inherit; font-size: 13.5px; color: #111827; outline: none; }
+    .details input:focus { border-color: #059669; box-shadow: 0 0 0 3px rgba(5, 150, 105, .15); }
+    .details button { height: 38px; border: 0; border-radius: 8px; background: #059669; color: #fff; font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer; }
+    .details-error { color: #b91c1c; font-size: 12px; }
+    .switch { align-self: flex-start; padding: 0; border: 0; background: none; color: #047857; font: inherit; font-size: 12px; text-decoration: underline; cursor: pointer; }
+    .input-row[hidden] { display: none; }
     .login { align-self: stretch; display: grid; gap: 8px; padding: 12px; background: #fff; border-radius: 12px; }
     .login input { padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 8px; font: inherit; font-size: 14px; }
     .login-row { display: flex; gap: 8px; }
@@ -64,7 +76,7 @@
     @media (max-width: 480px) {
       .panel { right: 8px; left: 8px; width: auto; bottom: 88px; height: min(80dvh, 620px); }
       .launcher { right: 16px; bottom: 16px; }
-      .input { font-size: 16px; }
+      .input, .details input { font-size: 16px; }
     }
     @media (prefers-reduced-motion: reduce) { .launcher { transition: none; } .typing span { animation: none; } }
   `;
@@ -194,7 +206,7 @@
     panel.classList.toggle('open', open);
     launcher.setAttribute('aria-expanded', String(open));
     launcher.setAttribute('aria-label', open ? 'Close chat' : 'Open chat');
-    if (open) input.focus();
+    if (open) (visitor ? input : messages.querySelector('.details input'))?.focus();
   };
   launcher.addEventListener('click', () => setOpen(!panel.classList.contains('open')));
   root.querySelector('.close').addEventListener('click', () => { setOpen(false); launcher.focus(); });
@@ -206,8 +218,58 @@
     send(text);
   });
 
+  const greet = () => {
+    const firstName = visitor.name.split(/\s+/)[0];
+    addMessage('bot', `Hi ${firstName}, this is ${name()}. How can I help you?`);
+    const change = document.createElement('button');
+    change.type = 'button';
+    change.className = 'switch';
+    change.textContent = `Not ${firstName}? Change details`;
+    change.addEventListener('click', () => {
+      visitor = null;
+      try { localStorage.removeItem(visitorKey); } catch (_) { /* Nothing stored. */ }
+      messages.replaceChildren();
+      askForDetails();
+      messages.querySelector('.details input')?.focus();
+    });
+    messages.append(change);
+    form.hidden = false;
+  };
+
+  // Ask for the visitor's name and email before the conversation starts.
+  function askForDetails() {
+    form.hidden = true;
+    addMessage('bot', `Hi, this is ${name()}. Before we start, please tell us your name and email address.`);
+    const box = document.createElement('form');
+    box.className = 'details';
+    box.noValidate = true;
+    box.innerHTML = '<label>Name<input name="name" type="text" maxlength="80" autocomplete="name" required></label><label>Email<input name="email" type="email" maxlength="254" autocomplete="email" required></label><div class="details-error" role="alert" hidden></div><button type="submit">Start chat</button>';
+    const error = box.querySelector('.details-error');
+    box.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const nameValue = box.elements.name.value.trim().replace(/\s+/g, ' ');
+      const emailValue = box.elements.email.value.trim();
+      let problem = '';
+      if (!nameValue) problem = 'Please enter your name.';
+      else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailValue)) problem = 'Please enter a valid email address.';
+      if (problem) {
+        error.textContent = problem;
+        error.hidden = false;
+        (nameValue ? box.elements.email : box.elements.name).focus();
+        return;
+      }
+      visitor = { name: nameValue, email: emailValue };
+      try { localStorage.setItem(visitorKey, JSON.stringify(visitor)); } catch (_) { /* Details last for this page only. */ }
+      messages.replaceChildren();
+      greet();
+      input.focus();
+    });
+    messages.append(box);
+    scrollDown();
+  }
+
   setTitle();
-  addMessage('bot', `Hi, this is ${name()}. How can I help you?`);
+  if (visitor) greet(); else askForDetails();
   document.body.append(host);
 
   fetch(`${apiBase}/api/website-config/${encodeURIComponent(websiteId)}`)
