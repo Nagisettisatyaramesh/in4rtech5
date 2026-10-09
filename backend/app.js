@@ -21,7 +21,8 @@ app.use(express.json({ limit: '20kb' }));
 if (process.env.NODE_ENV === 'production' && !process.env.SESSION_SECRET) {
   throw new Error('Set SESSION_SECRET before starting in production.');
 }
-app.use(session({
+// Only the admin API needs sessions, so public pages never wait on the session store.
+app.use('/api/admin', session({
   name: 'in4tech.sid', secret: process.env.SESSION_SECRET || 'development-only-change-this-secret',
   store: sessionStore, resave: false, saveUninitialized: false,
   cookie: { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', maxAge: 8 * 60 * 60 * 1000 }
