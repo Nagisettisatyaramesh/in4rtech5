@@ -457,3 +457,7 @@ html:not([data-theme=dark]) body #principles h2 em{color:#0e7490}
 html:not([data-theme=dark]) body #principles .trust-card h3{color:#111827}
 html:not([data-theme=dark]) body #principles .trust-card p{color:#4b5563}
 html:not([data-theme=dark]) body #principles .trust-card{border-color:#dbe3ea}
+
+/* Chat button sits in the bottom-right corner; keep back-to-top just above it */
+.back-top{right:30px;bottom:96px}
+@media(max-width:480px){.back-top{right:26px;bottom:92px}}
