@@ -1,0 +1,10 @@
+const express = require('express');
+const { login, listContacts, getContact, deleteContact, logout } = require('../controllers/adminController');
+const { requireAdmin } = require('../middleware/authMiddleware');
+const router = express.Router();
+router.post('/login', login);
+router.post('/logout', requireAdmin, logout);
+router.get('/contacts', requireAdmin, listContacts);
+router.get('/contacts/:id', requireAdmin, getContact);
+router.delete('/contacts/:id', requireAdmin, deleteContact);
+module.exports = router;

@@ -1,0 +1,5 @@
+.env*
+*.zip
+vercel-upload/
+vercel-drop-project-*/
+node_modules/
