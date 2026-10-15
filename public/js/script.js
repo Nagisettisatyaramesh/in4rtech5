@@ -109,6 +109,9 @@
   const form = document.getElementById('contact-form');
   const status = document.getElementById('form-status');
   const submitButton = form?.querySelector('button[type="submit"]');
+  const submitLabel = submitButton?.querySelector('.submit-label');
+  const defaultSubmitText = submitLabel?.textContent;
+  let submitLabelTimer;
   document.querySelectorAll('[data-interest]').forEach((link) => link.addEventListener('click', () => {
     const subject = form.elements.namedItem('subject');
     if (subject) subject.value = `Enquiry: ${link.dataset.interest}`;
@@ -119,6 +122,8 @@
     if (!form.reportValidity()) return;
     submitButton.disabled = true;
     submitButton.setAttribute('aria-busy', 'true');
+    clearTimeout(submitLabelTimer);
+    submitLabel.textContent = 'Sending…';
     status.textContent = 'Sending your message…';
     try {
       const payload = Object.fromEntries(new FormData(form).entries());
@@ -132,7 +137,10 @@
       status.className = 'success';
       status.textContent = result.message || 'Thanks for reaching out. Your message has been received.';
       form.reset();
+      submitLabel.textContent = 'Message sent ✓';
+      submitLabelTimer = setTimeout(() => { submitLabel.textContent = defaultSubmitText; }, 4000);
     } catch (error) {
+      submitLabel.textContent = defaultSubmitText;
       status.className = 'error';
       status.textContent = error instanceof TypeError || error.message === 'We could not send your message. Please try again.'
         ? 'The contact service is unavailable right now.'

@@ -461,3 +461,10 @@ html:not([data-theme=dark]) body #principles .trust-card{border-color:#dbe3ea}
 /* Chat button sits in the bottom-right corner; keep back-to-top just above it */
 .back-top{right:30px;bottom:96px}
 @media(max-width:480px){.back-top{right:26px;bottom:92px}}
+
+/* Contact form: keep the submit button on the right whether or not a status message is showing */
+.form-footer .button{margin-left:auto;flex-shrink:0}
+.form-footer .button[aria-busy=true]{opacity:.75;cursor:progress}
+
+/* Founder photo: same height as the text beside it, from the "People behind" heading to the role line */
+@media(min-width:701px){.people-grid{align-items:stretch}.people-photo{height:auto;width:auto;max-width:none;aspect-ratio:689/734;margin-top:44px;padding:8px;contain:size}}
