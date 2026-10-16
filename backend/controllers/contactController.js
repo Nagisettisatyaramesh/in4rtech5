@@ -30,7 +30,7 @@ async function createContact(req, res, next) {
     }).select('id').single());
     // The enquiry is already saved, so an email failure is logged rather than shown to the visitor.
     if (isEmailConfigured()) {
-      await sendContactEmail(record).catch((error) => console.error(`Enquiry email failed (${error.code || error.name || 'unknown'}).`));
+      await sendContactEmail(record).catch((error) => console.error(`Enquiry email failed (${error.code || error.name || 'unknown'}): ${error.message}`));
     }
     return res.status(201).json({ success: true, id: created.id, message: 'Thanks for reaching out. Your enquiry is with our team. We’ll reply to the email address you entered.' });
   } catch (error) { return next(error); }
