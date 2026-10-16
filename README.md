@@ -25,10 +25,13 @@ Contact submissions are limited to 5 per IP per hour and admin sign-in to 10 att
 
 ## Contact emails
 
-Set `RESEND_API_KEY`, `CONTACT_TO` and `CONTACT_FROM` to email each new enquiry through [Resend](https://resend.com). `CONTACT_FROM` must use a domain verified in Resend. Without these, enquiries are still saved and visible in the admin area.
+Each new enquiry is emailed to `CONTACT_TO` (comma-separate several addresses). Without email settings, enquiries are still saved and visible in the admin area.
+
+- **Gmail SMTP:** set `EMAIL_USER` to the Gmail address and `EMAIL_PASS` to a Google [app password](https://myaccount.google.com/apppasswords) (needs 2-Step Verification). Emails are sent from `EMAIL_USER`, which is also copied on each one.
+- **Resend:** alternatively set `RESEND_API_KEY` and `CONTACT_FROM` to email through [Resend](https://resend.com). `CONTACT_FROM` must use a domain verified in Resend. Gmail is used when both are set.
 
 ## Deploy
 
 The root `index.js` exports the Express app for Vercel, and `npm run vercel-build` prepares the frontend assets.
 
-For Vercel, configure `SESSION_SECRET`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `ADMIN_USERNAME` and `ADMIN_PASSWORD_HASH`, plus the Resend settings if used. The Vercel Supabase integration adds `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` automatically. Never commit `.env`.
+For Vercel, configure `SESSION_SECRET`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `ADMIN_USERNAME` and `ADMIN_PASSWORD_HASH`, plus the email settings if used. The Vercel Supabase integration adds `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` automatically. Never commit `.env`.
