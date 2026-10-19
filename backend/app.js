@@ -4,9 +4,9 @@ const express = require('express');
 const session = require('express-session');
 const helmet = require('helmet');
 const cors = require('cors');
-const { checkSupabaseConnection } = require('./config/supabase');
-const SupabaseSessionStore = require('./config/supabaseSessionStore');
-const sessionStore = new SupabaseSessionStore();
+const { checkDatabaseConnection } = require('./config/database');
+const PgSessionStore = require('./config/pgSessionStore');
+const sessionStore = new PgSessionStore();
 const contactRoutes = require('./routes/contactRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const blogRoutes = require('./routes/blogRoutes');
@@ -31,12 +31,12 @@ app.use('/api/admin', session({
 app.get('/api/health', async (req, res) => {
   let connection = 'unavailable';
   try {
-    await checkSupabaseConnection();
+    await checkDatabaseConnection();
     connection = 'connected';
   } catch (error) {
-    console.error(`Supabase health check failed (${error.code || 'unknown'}).`);
+    console.error(`Database health check failed (${error.code || 'unknown'}): ${error.message}`);
   }
-  res.status(connection === 'connected' ? 200 : 503).json({ status: connection === 'connected' ? 'ok' : 'degraded', database: 'supabase', connection });
+  res.status(connection === 'connected' ? 200 : 503).json({ status: connection === 'connected' ? 'ok' : 'degraded', database: 'postgresql', connection });
 });
 app.use('/api/contact', contactRoutes);
 app.use('/api/blogs', blogRoutes);

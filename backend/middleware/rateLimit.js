@@ -1,13 +1,13 @@
 const crypto = require('crypto');
-const { getSupabase, unwrap } = require('../config/supabase');
+const { query } = require('../config/database');
 
 // One row per scope and anonymized IP keeps the limiter shared across
-// serverless instances without storing raw IP addresses.
+// server instances without storing raw IP addresses.
 async function consumeRateLimit(scope, ip, limit, windowMs) {
   const key = crypto.createHash('sha256').update(`${scope}:${ip}`).digest('hex');
-  return unwrap(await getSupabase().rpc('consume_rate_limit', {
-    p_key: key, p_scope: scope, p_limit: limit, p_window_seconds: Math.round(windowMs / 1000)
-  })) === true;
+  const { rows } = await query('select consume_rate_limit($1, $2, $3, $4) as allowed',
+    [key, scope, limit, Math.round(windowMs / 1000)]);
+  return rows[0].allowed === true;
 }
 
 function rateLimit(scope, limit, windowMs) {

@@ -1,4 +1,4 @@
-const { getSupabase, unwrap } = require('../config/supabase');
+const { query } = require('../config/database');
 const { isEmailConfigured, sendContactEmail } = require('../config/email');
 
 const clean = (value, max) => String(value || '').trim().replace(/[<>]/g, '').slice(0, max);
@@ -24,10 +24,11 @@ async function createContact(req, res, next) {
       firstName, lastName, email, phone: phone || null, company: company || null,
       subject: subject || service || 'Website enquiry', service: service || null, message
     };
-    const created = unwrap(await getSupabase().from('contacts').insert({
-      first_name: record.firstName, last_name: record.lastName || null, email: record.email, phone: record.phone,
-      company: record.company, subject: record.subject, service: record.service, message: record.message
-    }).select('id').single());
+    const { rows: [created] } = await query(
+      `insert into contacts (first_name, last_name, email, phone, company, subject, service, message)
+       values ($1, $2, $3, $4, $5, $6, $7, $8) returning id`,
+      [record.firstName, record.lastName || null, record.email, record.phone, record.company, record.subject, record.service, record.message]
+    );
     // The enquiry is already saved, so an email failure is logged rather than shown to the visitor.
     if (isEmailConfigured()) {
       await sendContactEmail(record).catch((error) => console.error(`Enquiry email failed (${error.code || error.name || 'unknown'}): ${error.message}`));
