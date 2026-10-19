@@ -1,4 +1,4 @@
-const { getSupabase, unwrap } = require('../config/supabase');
+const { query } = require('../config/database');
 
 const LIMITS = { title: 160, summary: 400, author: 80, content: 100000 };
 const STATUSES = ['draft', 'published'];
@@ -51,7 +51,7 @@ function validate(body) {
 
 async function uniqueSlug(title, ownId) {
   const base = slugify(title);
-  const rows = unwrap(await getSupabase().from('blog_posts').select('id, slug').like('slug', `${base}%`));
+  const { rows } = await query("select id, slug from blog_posts where slug like $1 || '%'", [base]);
   const taken = new Set(rows.filter((row) => row.id !== ownId).map((row) => row.slug));
   let slug = base;
   for (let n = 2; taken.has(slug); n += 1) slug = `${base}-${n}`;
@@ -61,8 +61,7 @@ async function uniqueSlug(title, ownId) {
 // Public: published articles only.
 async function listPublished(req, res, next) {
   try {
-    const rows = unwrap(await getSupabase().from('blog_posts').select(LIST_FIELDS)
-      .eq('status', 'published').order('published_at', { ascending: false }));
+    const { rows } = await query(`select ${LIST_FIELDS} from blog_posts where status = 'published' order by published_at desc`);
     res.set('Cache-Control', 'public, max-age=60');
     res.json({ success: true, posts: rows.map((row) => blogFromRow(row, { includeContent: false })) });
   } catch (error) { next(error); }
@@ -70,8 +69,8 @@ async function listPublished(req, res, next) {
 
 async function getPublished(req, res, next) {
   try {
-    const row = unwrap(await getSupabase().from('blog_posts').select(LIST_FIELDS)
-      .eq('slug', line(req.params.slug, 100)).eq('status', 'published').maybeSingle());
+    const { rows: [row] } = await query(`select ${LIST_FIELDS} from blog_posts where slug = $1 and status = 'published'`,
+      [line(req.params.slug, 100)]);
     if (!row) return res.status(404).json({ success: false, message: 'Article not found.' });
     res.set('Cache-Control', 'public, max-age=60');
     res.json({ success: true, post: blogFromRow(row) });
@@ -81,7 +80,7 @@ async function getPublished(req, res, next) {
 // Admin: all articles, including drafts.
 async function listAll(req, res, next) {
   try {
-    const rows = unwrap(await getSupabase().from('blog_posts').select(LIST_FIELDS).order('updated_at', { ascending: false }));
+    const { rows } = await query(`select ${LIST_FIELDS} from blog_posts order by updated_at desc`);
     res.json({ success: true, posts: rows.map((row) => blogFromRow(row)) });
   } catch (error) { next(error); }
 }
@@ -90,14 +89,13 @@ async function createPost(req, res, next) {
   const { post, error } = validate(req.body || {});
   if (error) return res.status(400).json({ success: false, message: error });
   try {
-    const now = new Date().toISOString();
-    const row = unwrap(await getSupabase().from('blog_posts').insert({
-      ...post,
-      slug: await uniqueSlug(post.title),
-      created_at: now,
-      updated_at: now,
-      published_at: post.status === 'published' ? now : null
-    }).select(LIST_FIELDS).single());
+    const now = new Date();
+    const { rows: [row] } = await query(
+      `insert into blog_posts (title, summary, author, content, status, slug, created_at, updated_at, published_at)
+       values ($1, $2, $3, $4, $5, $6, $7, $7, $8) returning ${LIST_FIELDS}`,
+      [post.title, post.summary, post.author, post.content, post.status, await uniqueSlug(post.title), now,
+        post.status === 'published' ? now : null]
+    );
     res.status(201).json({ success: true, post: blogFromRow(row), message: post.status === 'published' ? 'Article published.' : 'Draft saved.' });
   } catch (err) { next(err); }
 }
@@ -106,26 +104,27 @@ async function updatePost(req, res, next) {
   const { post, error } = validate(req.body || {});
   if (error) return res.status(400).json({ success: false, message: error });
   try {
-    const existing = isUuid(req.params.id) && unwrap(await getSupabase().from('blog_posts')
-      .select('id, slug, published_at').eq('id', req.params.id).maybeSingle());
+    const existing = isUuid(req.params.id)
+      && (await query('select id, slug, published_at from blog_posts where id = $1', [req.params.id])).rows[0];
     if (!existing) return res.status(404).json({ success: false, message: 'Article not found.' });
-    const now = new Date().toISOString();
+    const now = new Date();
     // Keep the URL stable once an article has been published, so shared links keep working.
     const slug = existing.published_at ? existing.slug : await uniqueSlug(post.title, existing.id);
-    const row = unwrap(await getSupabase().from('blog_posts').update({
-      ...post,
-      slug,
-      updated_at: now,
-      published_at: existing.published_at || (post.status === 'published' ? now : null)
-    }).eq('id', existing.id).select(LIST_FIELDS).single());
+    const { rows: [row] } = await query(
+      `update blog_posts set title = $1, summary = $2, author = $3, content = $4, status = $5, slug = $6,
+         updated_at = $7, published_at = $8
+       where id = $9 returning ${LIST_FIELDS}`,
+      [post.title, post.summary, post.author, post.content, post.status, slug, now,
+        existing.published_at || (post.status === 'published' ? now : null), existing.id]
+    );
     res.json({ success: true, post: blogFromRow(row), message: post.status === 'published' ? 'Article published.' : 'Draft saved.' });
   } catch (err) { next(err); }
 }
 
 async function deletePost(req, res, next) {
   try {
-    const deleted = isUuid(req.params.id) ? unwrap(await getSupabase().from('blog_posts').delete()
-      .eq('id', req.params.id).select('id')) : [];
+    const deleted = isUuid(req.params.id)
+      ? (await query('delete from blog_posts where id = $1 returning id', [req.params.id])).rows : [];
     if (!deleted.length) return res.status(404).json({ success: false, message: 'Article not found.' });
     res.json({ success: true, message: 'Article deleted.' });
   } catch (error) { next(error); }

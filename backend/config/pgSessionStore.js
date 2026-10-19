@@ -1,10 +1,11 @@
 const crypto = require('crypto');
 const session = require('express-session');
-const { getSupabase, unwrap } = require('./supabase');
+const { query } = require('./database');
 
 const DEFAULT_TTL_MS = 8 * 60 * 60 * 1000;
 
-class SupabaseSessionStore extends session.Store {
+// Stores admin sessions in the admin_sessions table, keyed by a hash of the session id.
+class PgSessionStore extends session.Store {
   documentId(sessionId) {
     return crypto.createHash('sha256').update(sessionId).digest('hex');
   }
@@ -17,8 +18,8 @@ class SupabaseSessionStore extends session.Store {
 
   get(sessionId, callback) {
     Promise.resolve().then(async () => {
-      const row = unwrap(await getSupabase().from('admin_sessions').select('session, expires_at')
-        .eq('id', this.documentId(sessionId)).maybeSingle());
+      const { rows } = await query('select session, expires_at from admin_sessions where id = $1', [this.documentId(sessionId)]);
+      const row = rows[0];
       if (!row) return callback(null, null);
       if (new Date(row.expires_at) <= new Date()) {
         await this.destroy(sessionId);
@@ -29,13 +30,11 @@ class SupabaseSessionStore extends session.Store {
   }
 
   set(sessionId, sessionData, callback = () => {}) {
-    Promise.resolve().then(async () => {
-      unwrap(await getSupabase().from('admin_sessions').upsert({
-        id: this.documentId(sessionId),
-        session: JSON.parse(JSON.stringify(sessionData)),
-        expires_at: this.expiresAt(sessionData).toISOString()
-      }));
-    }).then(() => callback(null)).catch(callback);
+    query(
+      `insert into admin_sessions (id, session, expires_at) values ($1, $2, $3)
+       on conflict (id) do update set session = excluded.session, expires_at = excluded.expires_at`,
+      [this.documentId(sessionId), JSON.stringify(sessionData), this.expiresAt(sessionData)]
+    ).then(() => callback(null)).catch(callback);
   }
 
   touch(sessionId, sessionData, callback = () => {}) {
@@ -43,10 +42,9 @@ class SupabaseSessionStore extends session.Store {
   }
 
   destroy(sessionId, callback = () => {}) {
-    return Promise.resolve().then(async () => {
-      unwrap(await getSupabase().from('admin_sessions').delete().eq('id', this.documentId(sessionId)));
-    }).then(() => callback(null)).catch(callback);
+    return query('delete from admin_sessions where id = $1', [this.documentId(sessionId)])
+      .then(() => callback(null)).catch(callback);
   }
 }
 
-module.exports = SupabaseSessionStore;
+module.exports = PgSessionStore;
