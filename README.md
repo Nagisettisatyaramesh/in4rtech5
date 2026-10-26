@@ -14,7 +14,7 @@ An Express site and API. Contact submissions, blog posts, admin sessions and sha
 2. Copy `.env.example` to `.env` and set `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER` and `DB_PASSWORD`. Also set `SESSION_SECRET`.
 3. Run `npm start` and open <http://localhost:5000>. <http://localhost:5000/api/health> should report `"connection": "connected"`.
 
-Tables are created automatically: on first database use the server applies any SQL files in `backend/db/migrations` that haven't run yet, in name order, and records them in `schema_migrations`. To add a change, create the next numbered file (for example `002_add_column.sql`). `npm run db:migrate` applies pending migrations without starting the server.
+Tables are created automatically: on first database use the server applies any SQL files in `backend/db/migrations` that haven't run yet, in name order, and records them in `app_migrations`. To add a change, create the next numbered file (for example `002_add_column.sql`). `npm run db:migrate` applies pending migrations without starting the server.
 
 **Database over SSH.** If the database only listens on a remote server, set `SSH_ENABLED=true` with `SSH_HOST`, `SSH_PORT`, `SSH_USER` and `SSH_PASSWORD` (or `SSH_KEY_PATH` for a private key). The server opens a tunnel and connects to `DB_REMOTE_HOST:DB_REMOTE_PORT` as seen from that machine; `DB_HOST` and `DB_PORT` are then ignored.
 

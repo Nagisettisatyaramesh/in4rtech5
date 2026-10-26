@@ -5,16 +5,17 @@ const MIGRATIONS_DIR = path.join(__dirname, 'migrations');
 // Any fixed number works; it stops two server instances migrating at the same time.
 const LOCK_ID = 4847321;
 
-// Applies each .sql file in migrations/ once, in name order, recording it in schema_migrations.
+// Applies each .sql file in migrations/ once, in name order, recording it in public.app_migrations.
+// The table has its own name because hosted databases such as Supabase already have a schema_migrations table.
 async function migrate(pool) {
   const client = await pool.connect();
   try {
     await client.query('select pg_advisory_lock($1)', [LOCK_ID]);
-    await client.query(`create table if not exists schema_migrations (
+    await client.query(`create table if not exists public.app_migrations (
       name text primary key,
       applied_at timestamptz not null default now()
     )`);
-    const { rows } = await client.query('select name from schema_migrations');
+    const { rows } = await client.query('select name from public.app_migrations');
     const applied = new Set(rows.map((row) => row.name));
     const pending = fs.readdirSync(MIGRATIONS_DIR).filter((file) => file.endsWith('.sql') && !applied.has(file)).sort();
 
@@ -23,7 +24,7 @@ async function migrate(pool) {
       try {
         await client.query('begin');
         await client.query(sql);
-        await client.query('insert into schema_migrations (name) values ($1)', [file]);
+        await client.query('insert into public.app_migrations (name) values ($1)', [file]);
         await client.query('commit');
         console.log(`Applied database migration ${file}.`);
       } catch (error) {
